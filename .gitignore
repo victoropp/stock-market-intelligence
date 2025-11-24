@@ -1,0 +1,63 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Data files (too large for git)
+datasets/
+*.csv
+*.txt
+*.zip
+
+# Model files (too large for git - use Git LFS or separate storage)
+models/*.h5
+models/*.pkl
+models/*.png
+
+# Keep model metrics (small JSON files)
+!models/*_metrics.json
+
+# Logs
+*.log
+
+# Environment variables
+.env
+.env.local
