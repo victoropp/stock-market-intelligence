@@ -79,22 +79,31 @@ class StockDataLoader:
             if df.empty:
                 raise ValueError(f"No data available for {ticker}")
 
-            # Handle multi-level columns if present (happens with single ticker sometimes)
+            # Handle multi-level columns (yfinance 0.2.x returns MultiIndex columns)
             if isinstance(df.columns, pd.MultiIndex):
-                df.columns = df.columns.get_level_values(0)
+                # New yfinance format: ('Price', 'Ticker') - get first level (Price names)
+                df.columns = df.columns.droplevel(1)
 
-            # Standardize column names
-            df = df.rename(columns={
-                'Open': 'Open',
-                'High': 'High',
-                'Low': 'Low',
-                'Close': 'Close',
-                'Volume': 'Volume'
-            })
+            # Ensure we have standard column names
+            expected_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
+
+            # Check if columns exist (case-insensitive)
+            col_mapping = {}
+            for col in df.columns:
+                col_lower = str(col).lower()
+                for expected in expected_cols:
+                    if col_lower == expected.lower():
+                        col_mapping[col] = expected
+                        break
+
+            df = df.rename(columns=col_mapping)
 
             # Keep only OHLCV columns that exist
-            cols_to_keep = [c for c in ['Open', 'High', 'Low', 'Close', 'Volume'] if c in df.columns]
+            cols_to_keep = [c for c in expected_cols if c in df.columns]
             df = df[cols_to_keep]
+
+            if len(cols_to_keep) == 0:
+                raise ValueError(f"No valid OHLCV columns found for {ticker}")
 
             return df
 
