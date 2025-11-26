@@ -50,13 +50,11 @@ data/
 # Keep requirements.txt
 !requirements.txt
 
-# Model files (too large for git - use Git LFS or separate storage)
-models/*.h5
-models/*.pkl
+# Model performance charts (can be regenerated)
 models/*.png
 
+# Keep model files (tracked with Git LFS)
 # Keep model metrics (small JSON files)
-!models/*_metrics.json
 
 # Logs
 *.log
