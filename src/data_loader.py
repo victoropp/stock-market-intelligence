@@ -46,12 +46,12 @@ class StockDataLoader:
         local_data_path = os.path.join(project_root, 'data', 'Stocks')
         return os.path.exists(local_data_path)
 
-    def load_stock(self, ticker, start_date='2010-01-01', end_date=None):
+    def load_stock(self, ticker, start_date='2015-01-01', end_date=None):
         """Load a single stock's data.
 
         Args:
             ticker: Stock ticker symbol (e.g., 'AAPL')
-            start_date: Start date for yfinance (default: 2010-01-01)
+            start_date: Start date for yfinance (default: 2015-01-01)
             end_date: End date for yfinance (default: today)
 
         Returns:
@@ -69,63 +69,115 @@ class StockDataLoader:
 
     def _load_from_yfinance(self, ticker, start_date, end_date):
         """Load stock data from Yahoo Finance."""
+        import yfinance as yf
+
+        df = None
+        errors = []
+
+        # Method 1: Try yf.download with different parameters
         try:
-            import yfinance as yf
+            df = yf.download(
+                ticker,
+                start=start_date,
+                end=end_date,
+                progress=False,
+                auto_adjust=True,
+                actions=False
+            )
+            if df is not None and not df.empty:
+                df = self._process_yfinance_df(df, ticker)
+                if df is not None and not df.empty:
+                    return df
+        except Exception as e:
+            errors.append(f"download(): {e}")
 
-            # Try download() first - more reliable
+        # Method 2: Try Ticker.history
+        try:
+            stock = yf.Ticker(ticker)
+            df = stock.history(start=start_date, end=end_date, auto_adjust=True)
+            if df is not None and not df.empty:
+                df = self._process_yfinance_df(df, ticker)
+                if df is not None and not df.empty:
+                    return df
+        except Exception as e:
+            errors.append(f"history(): {e}")
+
+        # Method 3: Try with period instead of dates
+        try:
+            stock = yf.Ticker(ticker)
+            df = stock.history(period="max", auto_adjust=True)
+            if df is not None and not df.empty:
+                df = self._process_yfinance_df(df, ticker)
+                if df is not None and not df.empty:
+                    # Filter by date
+                    df = df[df.index >= start_date]
+                    if end_date:
+                        df = df[df.index <= end_date]
+                    if not df.empty:
+                        return df
+        except Exception as e:
+            errors.append(f"history(period=max): {e}")
+
+        # Method 4: Try download with period
+        try:
+            df = yf.download(
+                ticker,
+                period="10y",
+                progress=False,
+                auto_adjust=True
+            )
+            if df is not None and not df.empty:
+                df = self._process_yfinance_df(df, ticker)
+                if df is not None and not df.empty:
+                    return df
+        except Exception as e:
+            errors.append(f"download(period=10y): {e}")
+
+        # All methods failed
+        raise ValueError(f"No data available for {ticker}. Tried multiple methods. Errors: {'; '.join(errors)}")
+
+    def _process_yfinance_df(self, df, ticker):
+        """Process and standardize yfinance DataFrame."""
+        if df is None or df.empty:
+            return None
+
+        # Handle multi-level columns (yfinance 0.2.x returns MultiIndex columns)
+        if isinstance(df.columns, pd.MultiIndex):
+            # Try to get the price level
             try:
-                df = yf.download(
-                    ticker,
-                    start=start_date,
-                    end=end_date,
-                    progress=False,
-                    auto_adjust=True,
-                    timeout=30
-                )
-            except Exception:
-                # Fallback to Ticker.history() if download fails
-                stock = yf.Ticker(ticker)
-                df = stock.history(start=start_date, end=end_date, auto_adjust=True)
-
-            if df is None or df.empty:
-                raise ValueError(f"No data available for {ticker}")
-
-            # Handle multi-level columns (yfinance 0.2.x returns MultiIndex columns)
-            if isinstance(df.columns, pd.MultiIndex):
-                # New yfinance format: ('Price', 'Ticker') - get first level (Price names)
                 df.columns = df.columns.droplevel(1)
+            except Exception:
+                # If that fails, try to get first level
+                df.columns = [col[0] if isinstance(col, tuple) else col for col in df.columns]
 
-            # Ensure we have standard column names
-            expected_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
+        # Ensure we have standard column names
+        expected_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
 
-            # Check if columns exist (case-insensitive)
-            col_mapping = {}
-            for col in df.columns:
-                col_lower = str(col).lower()
-                for expected in expected_cols:
-                    if col_lower == expected.lower():
-                        col_mapping[col] = expected
-                        break
+        # Build column mapping (case-insensitive)
+        col_mapping = {}
+        for col in df.columns:
+            col_str = str(col).strip()
+            col_lower = col_str.lower()
+            for expected in expected_cols:
+                if col_lower == expected.lower():
+                    col_mapping[col] = expected
+                    break
 
+        if col_mapping:
             df = df.rename(columns=col_mapping)
 
-            # Keep only OHLCV columns that exist
-            cols_to_keep = [c for c in expected_cols if c in df.columns]
-            df = df[cols_to_keep]
+        # Keep only OHLCV columns that exist
+        cols_to_keep = [c for c in expected_cols if c in df.columns]
 
-            if len(cols_to_keep) == 0:
-                raise ValueError(f"No valid OHLCV columns found for {ticker}")
+        if len(cols_to_keep) == 0:
+            return None
 
-            return df
+        df = df[cols_to_keep]
 
-        except ImportError:
-            raise ImportError("yfinance is required for cloud mode. Install with: pip install yfinance")
-        except ValueError as e:
-            raise e
-        except Exception as e:
-            import traceback
-            error_details = traceback.format_exc()
-            raise Exception(f"Error fetching {ticker} from Yahoo Finance: {e}\nDetails: {error_details}")
+        # Remove any rows with all NaN
+        df = df.dropna(how='all')
+
+        return df if not df.empty else None
 
     def _load_from_file(self, ticker):
         """Load stock data from local CSV file."""
@@ -173,7 +225,7 @@ class StockDataLoader:
         for ticker in tickers:
             try:
                 if self.use_yfinance:
-                    df = self.load_stock(ticker, start_date or '2010-01-01', end_date)
+                    df = self.load_stock(ticker, start_date or '2015-01-01', end_date)
                 else:
                     df = self.load_stock(ticker)
 
@@ -187,6 +239,13 @@ class StockDataLoader:
                 print(f"Error loading {ticker}: {e}")
 
         return data
+
+
+# Streamlit-compatible cached loader function
+def get_cached_stock_data(ticker, start_date='2015-01-01', end_date=None):
+    """Get stock data with Streamlit caching support."""
+    loader = StockDataLoader()
+    return loader.load_stock(ticker, start_date, end_date)
 
 
 if __name__ == "__main__":

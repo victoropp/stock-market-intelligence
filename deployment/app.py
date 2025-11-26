@@ -157,6 +157,13 @@ st.markdown("""
 def get_loader():
     return StockDataLoader()
 
+# Cache stock data to avoid repeated API calls
+@st.cache_data(ttl=3600)  # Cache for 1 hour
+def load_stock_cached(ticker, start_date='2015-01-01'):
+    """Load stock data with caching."""
+    loader = get_loader()
+    return loader.load_stock(ticker, start_date)
+
 loader = get_loader()
 
 tabs = st.tabs(["📈 Market Scanner", "🔬 Strategy Backtester", "📊 Technical Analysis", "🤖 ML Predictions"])
@@ -181,7 +188,7 @@ with tabs[0]:
                 
                 for ticker in popular_stocks:
                     try:
-                        df = loader.load_stock(ticker)
+                        df = load_stock_cached(ticker)
                         df = df.tail(100)  # Last 100 days
                         df = TechnicalIndicators.add_all_indicators(df)
                         df = TechnicalIndicators.generate_signals(df)
@@ -223,7 +230,7 @@ with tabs[1]:
         
         # Get available date range for selected stock
         try:
-            temp_df = loader.load_stock(ticker)
+            temp_df = load_stock_cached(ticker)
             min_date = temp_df.index.min().date()
             max_date = temp_df.index.max().date()
             
@@ -256,7 +263,7 @@ with tabs[1]:
             with st.spinner("Running backtest..."):
                 try:
                     # Load data
-                    df = loader.load_stock(ticker)
+                    df = load_stock_cached(ticker)
                     
                     # Validate date range
                     if len(date_range) != 2:
@@ -350,7 +357,7 @@ with tabs[2]:
     
     if st.button("Load Chart"):
         with st.spinner("Loading data..."):
-            df = loader.load_stock(ticker)
+            df = load_stock_cached(ticker)
             df = df.tail(252)  # Last year
             
             df = TechnicalIndicators.add_all_indicators(df)
@@ -492,7 +499,7 @@ with tabs[3]:
                     scaler_path = os.path.join(models_dir, f'{ticker_ml.lower()}_scaler.pkl')
 
                     # Load recent data for display
-                    df = loader.load_stock(ticker_ml)
+                    df = load_stock_cached(ticker_ml)
                     df = df.tail(60)  # Last 60 days for prediction
 
                     if not os.path.exists(model_path):
@@ -560,7 +567,7 @@ with tabs[3]:
             fig = go.Figure()
             
             # Historical (last 60 days)
-            df_hist = loader.load_stock(pred_data['ticker']).tail(60)
+            df_hist = load_stock_cached(pred_data['ticker']).tail(60)
             fig.add_trace(go.Scatter(
                 x=df_hist.index,
                 y=df_hist['Close'],
