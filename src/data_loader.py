@@ -67,13 +67,23 @@ class StockDataLoader:
         try:
             import yfinance as yf
 
-            stock = yf.Ticker(ticker)
-            df = stock.history(start=start_date, end=end_date)
+            # Use download() which is more reliable than Ticker.history()
+            df = yf.download(
+                ticker,
+                start=start_date,
+                end=end_date,
+                progress=False,
+                auto_adjust=True
+            )
 
             if df.empty:
                 raise ValueError(f"No data available for {ticker}")
 
-            # Standardize column names to match local file format
+            # Handle multi-level columns if present (happens with single ticker sometimes)
+            if isinstance(df.columns, pd.MultiIndex):
+                df.columns = df.columns.get_level_values(0)
+
+            # Standardize column names
             df = df.rename(columns={
                 'Open': 'Open',
                 'High': 'High',
@@ -82,13 +92,16 @@ class StockDataLoader:
                 'Volume': 'Volume'
             })
 
-            # Keep only OHLCV columns
-            df = df[['Open', 'High', 'Low', 'Close', 'Volume']]
+            # Keep only OHLCV columns that exist
+            cols_to_keep = [c for c in ['Open', 'High', 'Low', 'Close', 'Volume'] if c in df.columns]
+            df = df[cols_to_keep]
 
             return df
 
         except ImportError:
             raise ImportError("yfinance is required for cloud mode. Install with: pip install yfinance")
+        except ValueError as e:
+            raise e
         except Exception as e:
             raise Exception(f"Error fetching {ticker} from Yahoo Finance: {e}")
 
