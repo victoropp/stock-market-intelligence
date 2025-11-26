@@ -1,12 +1,8 @@
-# Stock Market Intelligence Platform
-
-python-version = "3.8"
-
-[tool.streamlit]
-server.port = 8501
-server.headless = true
-server.enableCORS = false
-server.enableXsrfProtection = true
+[server]
+port = 8501
+headless = true
+enableCORS = false
+enableXsrfProtection = true
 
 [theme]
 primaryColor = "#00CC96"
@@ -14,3 +10,6 @@ backgroundColor = "#0e1117"
 secondaryBackgroundColor = "#262730"
 textColor = "#ffffff"
 font = "sans serif"
+
+[browser]
+gatherUsageStats = false

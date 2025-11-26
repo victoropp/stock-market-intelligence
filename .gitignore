@@ -43,9 +43,12 @@ Thumbs.db
 
 # Data files (too large for git)
 datasets/
+data/
 *.csv
-*.txt
 *.zip
+
+# Keep requirements.txt
+!requirements.txt
 
 # Model files (too large for git - use Git LFS or separate storage)
 models/*.h5

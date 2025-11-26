@@ -484,45 +484,69 @@ with tabs[3]:
             with st.spinner("Loading model and generating predictions..."):
                 try:
                     import pickle
-                    from tensorflow.keras.models import load_model
-                    from ml_models import MLModels
                     import numpy as np
-                    
+
                     # Load pre-trained model
                     models_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'models')
                     model_path = os.path.join(models_dir, f'{ticker_ml.lower()}_lstm_model.h5')
                     scaler_path = os.path.join(models_dir, f'{ticker_ml.lower()}_scaler.pkl')
-                    
+
+                    # Load recent data for display
+                    df = loader.load_stock(ticker_ml)
+                    df = df.tail(60)  # Last 60 days for prediction
+
                     if not os.path.exists(model_path):
-                        st.error(f"Model not found for {ticker_ml}. Please run `python src/train_models.py` first.")
+                        # Demo mode - generate simple trend-based prediction
+                        st.warning(f"Pre-trained model not available for {ticker_ml}. Showing demo forecast based on trend analysis.")
+
+                        # Simple trend prediction based on recent momentum
+                        last_price = df['Close'].iloc[-1]
+                        recent_return = (df['Close'].iloc[-1] / df['Close'].iloc[-20] - 1)  # 20-day return
+                        daily_return = recent_return / 20
+
+                        predictions = []
+                        price = last_price
+                        for i in range(forecast_days):
+                            # Add some randomness to make it realistic
+                            noise = np.random.normal(0, 0.005)
+                            price = price * (1 + daily_return * 0.5 + noise)
+                            predictions.append(price)
+
+                        st.session_state['ml_predictions'] = {
+                            'ticker': ticker_ml,
+                            'predictions': predictions,
+                            'last_price': last_price,
+                            'dates': pd.date_range(start=df.index[-1], periods=forecast_days+1, freq='D')[1:],
+                            'demo_mode': True
+                        }
+                        st.info("This is a demo forecast. For full LSTM predictions, deploy with pre-trained models.")
                     else:
-                        # Load model and scaler
+                        # Full model mode
+                        from tensorflow.keras.models import load_model
+                        from ml_models import MLModels
+
                         model = load_model(model_path)
                         with open(scaler_path, 'rb') as f:
                             scaler = pickle.load(f)
-                        
-                        # Load recent data
-                        df = loader.load_stock(ticker_ml)
-                        df = df.tail(60)  # Last 60 days for prediction
-                        
+
                         # Prepare data
                         scaled_data = scaler.transform(df[['Close']].values)
                         last_sequence = scaled_data.reshape((1, 60, 1))
-                        
+
                         # Generate predictions
                         predictions = MLModels.predict_lstm(model, scaler, last_sequence[0], n_future=forecast_days)
-                        
-                        # Store in session
+
                         st.session_state['ml_predictions'] = {
                             'ticker': ticker_ml,
                             'predictions': predictions,
                             'last_price': df['Close'].iloc[-1],
-                            'dates': pd.date_range(start=df.index[-1], periods=forecast_days+1, freq='D')[1:]
+                            'dates': pd.date_range(start=df.index[-1], periods=forecast_days+1, freq='D')[1:],
+                            'demo_mode': False
                         }
-                        
+
                         st.success("Forecast generated successfully!")
                 except ImportError as e:
-                    st.error("TensorFlow not installed. Run: pip install tensorflow")
+                    st.error(f"Required package not installed: {e}")
                 except Exception as e:
                     st.error(f"Error: {e}")
     
@@ -555,10 +579,11 @@ with tabs[3]:
                 marker=dict(size=6)
             ))
             
+            forecast_type = "Trend Analysis Demo" if pred_data.get('demo_mode', False) else "Pre-trained LSTM"
             fig.update_layout(
                 template="plotly_dark",
                 height=500,
-                title=f"{pred_data['ticker']} Price Forecast (Pre-trained LSTM)",
+                title=f"{pred_data['ticker']} Price Forecast ({forecast_type})",
                 xaxis_title="Date",
                 yaxis_title="Price ($)",
                 plot_bgcolor='rgba(0,0,0,0)',
@@ -651,7 +676,7 @@ with tabs[3]:
         # Display performance chart
         if os.path.exists(chart_path):
             st.markdown("### Predictions vs Actual (Test Set)")
-            st.image(chart_path, use_column_width=True)
+            st.image(chart_path, use_container_width=True)
         else:
             st.warning(f"Performance chart not found for {selected_model}")
     else:
