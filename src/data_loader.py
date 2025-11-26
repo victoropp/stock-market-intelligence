@@ -57,6 +57,11 @@ class StockDataLoader:
         Returns:
             DataFrame with OHLCV data indexed by date
         """
+        # Ensure end_date is set for yfinance
+        if end_date is None:
+            from datetime import datetime
+            end_date = datetime.now().strftime('%Y-%m-%d')
+
         if self.use_yfinance:
             return self._load_from_yfinance(ticker, start_date, end_date)
         else:
@@ -67,16 +72,22 @@ class StockDataLoader:
         try:
             import yfinance as yf
 
-            # Use download() which is more reliable than Ticker.history()
-            df = yf.download(
-                ticker,
-                start=start_date,
-                end=end_date,
-                progress=False,
-                auto_adjust=True
-            )
+            # Try download() first - more reliable
+            try:
+                df = yf.download(
+                    ticker,
+                    start=start_date,
+                    end=end_date,
+                    progress=False,
+                    auto_adjust=True,
+                    timeout=30
+                )
+            except Exception:
+                # Fallback to Ticker.history() if download fails
+                stock = yf.Ticker(ticker)
+                df = stock.history(start=start_date, end=end_date, auto_adjust=True)
 
-            if df.empty:
+            if df is None or df.empty:
                 raise ValueError(f"No data available for {ticker}")
 
             # Handle multi-level columns (yfinance 0.2.x returns MultiIndex columns)
@@ -112,7 +123,9 @@ class StockDataLoader:
         except ValueError as e:
             raise e
         except Exception as e:
-            raise Exception(f"Error fetching {ticker} from Yahoo Finance: {e}")
+            import traceback
+            error_details = traceback.format_exc()
+            raise Exception(f"Error fetching {ticker} from Yahoo Finance: {e}\nDetails: {error_details}")
 
     def _load_from_file(self, ticker):
         """Load stock data from local CSV file."""
